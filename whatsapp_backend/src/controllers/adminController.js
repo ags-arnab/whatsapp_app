@@ -1,33 +1,40 @@
 // src/controllers/adminController.js
 const User = require('../models/User');
 const bcrypt = require('bcryptjs');
+const mongoose = require('mongoose');
 
 exports.createUser = async (req, res) => {
   try {
-    const { email, password, fullName, role } = req.body;
+    const { email, password, fullName, role, companyName, expiryDate } = req.body;
 
     const userExists = await User.findOne({ email });
     if (userExists) {
       return res.status(400).json({ message: 'User already exists' });
     }
 
+    // Create user with company name
     const user = await User.create({
       email,
       password,
       fullName,
-      role: role || 'user'
+      role: role || 'user',
+      companyName,
+      expiryDate
     });
 
     res.status(201).json({
-      message: 'User created successfully',
+      success: true,
       user: {
         id: user._id,
         email: user.email,
         fullName: user.fullName,
-        role: user.role
+        role: user.role,
+        companyName: user.companyName,
+        expiryDate: user.expiryDate
       }
     });
   } catch (error) {
+    console.error('Create user error:', error);
     res.status(500).json({ message: 'Server error' });
   }
 };
@@ -142,5 +149,142 @@ exports.updateUserTitle = async (req, res) => {
     res.json(user);
   } catch (error) {
     res.status(500).json({ message: 'Server error' });
+  }
+};
+
+// Backend: adminController.js
+exports.updateUserStatus = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { isSuspended } = req.body;
+
+    if (!userId || !mongoose.Types.ObjectId.isValid(userId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid user ID format'
+      });
+    }
+
+    const user = await User.findByIdAndUpdate(
+      userId,
+      { isSuspended },
+      { new: true }
+    );
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    // Check if suspension is due to expiry
+    const isExpired = user.expiryDate && new Date(user.expiryDate) < new Date();
+
+    res.json({
+      success: true,
+      user: {
+        _id: user._id,
+        isSuspended: user.isSuspended,
+        isExpired
+      }
+    });
+  } catch (error) {
+    console.error('Update status error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to update user status'
+    });
+  }
+};
+
+exports.updateUserCompany = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { companyName } = req.body;
+
+    const user = await User.findByIdAndUpdate(
+      userId,
+      { companyName },
+      { new: true }
+    ).select('-password');
+
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    res.json({ success: true, user });
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to update company name' });
+  }
+};
+
+exports.deleteUser = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const user = await User.findById(userId);
+
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    if (user.role === 'admin') {
+      return res.status(403).json({ message: 'Cannot delete admin users' });
+    }
+
+    await User.findByIdAndDelete(userId);
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to delete user' });
+  }
+};
+
+exports.updateUserDate = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    let { expiryDate } = req.body;
+
+    if (!mongoose.Types.ObjectId.isValid(userId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid user ID format'
+      });
+    }
+
+    const dateToSave = new Date(expiryDate);
+    if (isNaN(dateToSave.getTime())) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid date format'
+      });
+    }
+
+    const updatedUser = await User.findByIdAndUpdate(
+      userId,
+      { expiryDate: dateToSave },
+      { new: true }
+    );
+
+    if (!updatedUser) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    res.json({
+      success: true,
+      user: {
+        _id: updatedUser._id,
+        expiryDate: dateToSave.toISOString()
+      }
+    });
+
+  } catch (error) {
+    console.error('Update date error:', error);
+    res.status(500).json({
+      success: false, 
+      message: 'Failed to update expiry date'
+    });
   }
 };

@@ -5,14 +5,14 @@ const bcrypt = require('bcryptjs');
 const userSchema = new mongoose.Schema({
   email: {
     type: String,
-    required: [true, 'Email is required'],
+    required: true,
     unique: true,
     lowercase: true,
     trim: true
   },
   password: {
     type: String,
-    required: [true, 'Password is required'],
+    required: true,
     minlength: [6, 'Password must be at least 6 characters'],
     select: false
   },
@@ -22,7 +22,7 @@ const userSchema = new mongoose.Schema({
   },
   role: {
     type: String,
-    enum: ['admin', 'user'],
+    enum: ['user', 'admin'],
     default: 'user'
   },
   active: {
@@ -31,8 +31,36 @@ const userSchema = new mongoose.Schema({
   },
   lastLogin: {
     type: Date
+  },
+  expiryDate: {
+    type: Date,
+    set: function(val) {
+      if (!val) return null;
+      const d = new Date(val);
+      d.setUTCHours(0, 0, 0, 0);
+      return d;
+    },
+    get: function(val) {
+      return val ? val.toISOString() : null;
+    }
+  },
+  isActive: {
+    type: Boolean,
+    default: true
+  },
+  isSuspended: {
+    type: Boolean,
+    default: false
+  },
+  companyName: {
+    type: String,
+    default: ''
   }
-}, { timestamps: true });
+}, { 
+  timestamps: true,
+  toObject: { getters: true },
+  toJSON: { getters: true }
+});
 
 // Hash password before saving
 userSchema.pre('save', async function(next) {
@@ -43,6 +71,27 @@ userSchema.pre('save', async function(next) {
   } catch (error) {
     next(error);
   }
+});
+
+// Add pre-save middleware to handle dates
+userSchema.pre('save', function(next) {
+  if (this.isModified('expiryDate') && this.expiryDate) {
+    const d = new Date(this.expiryDate);
+    d.setUTCHours(0, 0, 0, 0);
+    this.expiryDate = d;
+  }
+  next();
+});
+
+// Add middleware to check expiry and set suspension
+userSchema.pre('save', function(next) {
+  if (this.expiryDate) {
+    const now = new Date();
+    if (this.expiryDate < now) {
+      this.isSuspended = true;
+    }
+  }
+  next();
 });
 
 // Compare password method

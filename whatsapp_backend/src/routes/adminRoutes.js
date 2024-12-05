@@ -11,5 +11,9 @@ router.post('/create-user', adminController.createUser);
 router.post('/reset-password', adminController.resetPassword);
 router.get('/users', adminController.getUsers);
 router.get('/users/search', adminController.searchUsers);
+router.put('/users/:userId/status', protect, authorize('admin'), adminController.updateUserStatus);
+router.put('/users/:userId/company', protect, authorize('admin'), adminController.updateUserCompany);
+router.put('/users/:userId/expiry', protect, authorize('admin'), adminController.updateUserDate);
+router.delete('/users/:userId', protect, authorize('admin'), adminController.deleteUser);
 
 module.exports = router;
